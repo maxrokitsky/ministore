@@ -1,0 +1,50 @@
+[project]
+name = "ministore"
+version = "0.1.0"
+description = "Tiny local SQLite-backed store for dataclasses, pydantic and msgspec models — sync and async."
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "MIT" }
+authors = [{ name = "Max Rokitsky", email = "max@rokitsky.ru" }]
+keywords = ["sqlite", "store", "dataclass", "pydantic", "msgspec", "async"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Typing :: Typed",
+]
+# The core has no required dependencies — sync runs on the stdlib sqlite3.
+dependencies = []
+
+[project.optional-dependencies]
+async = ["aiosqlite>=0.20"]
+pydantic = ["pydantic>=2"]
+msgspec = ["msgspec>=0.18"]
+all = ["aiosqlite>=0.20", "pydantic>=2", "msgspec>=0.18"]
+
+[project.urls]
+Homepage = "https://github.com/maxrokitsky/ministore"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ministore"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pyright>=1.1.390",
+    "aiosqlite>=0.20",
+    "pydantic>=2",
+    "msgspec>=0.18",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
