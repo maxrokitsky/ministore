@@ -29,6 +29,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: uv run pyright
 
+      # Secondary check: ensure the published package stays clean under mypy
+      # strict, so downstream projects using mypy never see errors from our
+      # py.typed sources. Pyright remains the primary type checker.
+      - name: Type check (mypy)
+        if: ${{ !cancelled() }}
+        run: uv run mypy
+
       - name: Tests (pytest)
         if: ${{ !cancelled() }}
         run: uv run pytest

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import Any
+from typing import Any, cast
 
 from ._schema import Table
 from ._sql import quote
@@ -86,7 +86,7 @@ def _as_sequence(value: Any) -> list[Any]:
     if isinstance(value, str | bytes):
         return [value]
     if isinstance(value, Iterable):
-        return list(value)  # type: ignore[arg-type]
+        return list(cast("Iterable[Any]", value))
     return [value]
 
 

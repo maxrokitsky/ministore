@@ -10,7 +10,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from os import PathLike
 from types import TracebackType
-from typing import Any, Generic, Self, TypeVar
+from typing import Any, Generic, Self, TypeVar, cast
 
 from . import _sql
 from ._adapters import get_adapter
@@ -261,7 +261,7 @@ class AsyncCollection(Generic[T]):
             cur = await conn.execute(
                 _sql.delete_one_sql(self.table), (self._mapper.encode_key(key),)
             )
-            return cur.rowcount
+            return cast(int, cur.rowcount)
 
         return await _run_atomic(self._store, work) > 0
 
@@ -356,7 +356,7 @@ class AsyncQuery(Generic[T]):
             async with conn.execute(
                 _sql.select_sql(self._select_table, where, tail), params
             ) as cur:
-                return await cur.fetchall()
+                return cast("list[Any]", await cur.fetchall())
 
         rows = await _run_atomic(self._store, work)
         return [self._mapper.from_row(row) for row in rows]
@@ -386,7 +386,7 @@ class AsyncQuery(Generic[T]):
 
         async def work() -> int:
             cur = await conn.execute(_sql.delete_where_sql(self._table, where), params)
-            return cur.rowcount
+            return cast(int, cur.rowcount)
 
         return await _run_atomic(self._store, work)
 

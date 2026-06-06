@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 from ._adapters import Adapter
 from ._schema import Table
@@ -32,4 +32,4 @@ class Mapper(Generic[T]):
 
     def from_row(self, row: Mapping[str, Any]) -> T:
         data = {col.name: col.decode(row[col.name]) for col in self.table.columns}
-        return self.adapter.from_dict(self.model, data)
+        return cast(T, self.adapter.from_dict(self.model, data))

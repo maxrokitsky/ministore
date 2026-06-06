@@ -157,7 +157,8 @@ class PydanticAdapter(Adapter):
         return specs
 
     def to_dict(self, instance: Any) -> dict[str, Any]:
-        return instance.model_dump()
+        result: dict[str, Any] = instance.model_dump()
+        return result
 
     def from_dict(self, model: type, data: dict[str, Any]) -> Any:
         import pydantic

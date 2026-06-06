@@ -11,11 +11,12 @@ uv sync                         # create .venv and install deps + dev group
 uv run pytest                   # run all tests
 uv run pytest tests/test_sync.py::test_put_get_roundtrip   # single test
 uv run pytest -k thread         # tests matching a name
-uv run pyright                  # strict type check — MUST report 0 errors
+uv run pyright                  # strict type check (primary) — MUST report 0 errors
+uv run mypy                     # strict type check (secondary, src only) — MUST report 0 errors
 ```
 
-There is no separate build/lint step beyond `pyright`. `pytest` is configured
-with `asyncio_mode = "auto"`, so async tests need no decorator.
+There is no separate build/lint step beyond the two type checkers. `pytest` is
+configured with `asyncio_mode = "auto"`, so async tests need no decorator.
 
 ## What this is
 
@@ -37,6 +38,14 @@ JSON `TEXT` column. See `README.md` for the user-facing API.
   (`_adapters`, `_typemap`) deliberately use `typing.cast(...)` to launder
   `Unknown` types that arise from `get_type_hints` / dynamic model APIs. Prefer
   `cast` over `# type: ignore`.
+- **`mypy` (strict) is a secondary check over `src/` only** — its sole job is to
+  ensure that projects installing `ministore` under mypy never see errors leak
+  out of our `py.typed` sources. Pyright is the primary checker; mypy does not
+  gate the test suite. One config caveat: `[tool.mypy].warn_redundant_casts` is
+  off, because mypy narrows `isinstance(x: Any, dict)` straight to `dict[Any, Any]`
+  and flags the `cast(...)` calls that pyright still needs (it narrows to
+  `dict[Unknown]`). pyright's `reportUnnecessaryCast` still polices dead casts.
+  When you add a `cast`, run **both** checkers — a fix for one can break the other.
 - **Private modules.** Everything under `ministore/` except what is re-exported
   in `__init__.py`'s `__all__` is implementation detail (`_`-prefixed). The
   public contract is exactly that `__all__`.
