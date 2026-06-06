@@ -21,6 +21,7 @@ asynchronously, with minimal code:
 from __future__ import annotations
 
 from ._async import AsyncCollection, AsyncQuery, AsyncStore
+from ._markers import Index, Key, Unique
 from ._sync import Collection, Query, Store
 from .exceptions import (
     MinistoreError,
@@ -39,6 +40,9 @@ __all__ = [
     "AsyncStore",
     "AsyncCollection",
     "AsyncQuery",
+    "Key",
+    "Index",
+    "Unique",
     "MinistoreError",
     "MissingDependencyError",
     "QueryError",

@@ -89,6 +89,8 @@ users.drop()                # drop the table
 
 ## Indexes
 
+Declare the key and indexes either as keyword arguments to `collection(...)`:
+
 ```python
 users = db.collection(
     User,
@@ -98,6 +100,31 @@ users = db.collection(
     name="users",         # table name (defaults to the class name)
 )
 ```
+
+…or inline, on the fields themselves, with the `Key` / `Index` / `Unique`
+markers. They are generic aliases over `typing.Annotated`, so `Unique[str]` is
+just a `str` to a type checker while ministore reads the marker to build the
+table:
+
+```python
+from typing import Annotated
+from ministore import Store, Key, Index, Unique
+
+@dataclass
+class User:
+    id:    Key[int]        # primary key — no key= needed
+    email: Unique[str]     # unique index
+    age:   Index[int]      # plain index
+    name:  str
+
+users = db.collection(User)          # schema comes from the annotations
+
+# Extra Annotated metadata composes by nesting (Annotated flattens it):
+#   code: Annotated[Unique[str], Field(max_length=16)]
+```
+
+Both styles can be combined — the keyword arguments and the markers are merged
+(`key=` must agree with a `Key` marker if both are present).
 
 ## Async API
 

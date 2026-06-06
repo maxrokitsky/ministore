@@ -59,7 +59,7 @@ class Store:
         self,
         model: type[T],
         *,
-        key: str,
+        key: str | None = None,
         name: str | None = None,
         indexes: Iterable[str] = (),
         unique: Iterable[str] = (),

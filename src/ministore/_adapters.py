@@ -14,18 +14,30 @@ import enum
 import uuid as _uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, cast, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, cast, get_args, get_origin, get_type_hints
 
 from .exceptions import UnsupportedModelError
 
 
 @dataclass(frozen=True)
 class FieldSpec:
-    """A model field: name, type annotation, whether it is required."""
+    """A model field: name, type annotation, whether it is required.
+
+    ``metadata`` holds the ``Annotated`` extras attached to the field (markers,
+    constraints, …) — the source for inline ``Key`` / ``Index`` / ``Unique``.
+    """
 
     name: str
     type: Any
     required: bool
+    metadata: tuple[Any, ...] = ()
+
+
+def _annotated_meta(tp: Any) -> tuple[Any, ...]:
+    """Returns the ``Annotated`` metadata of a type, or ``()`` if it is plain."""
+    if get_origin(tp) is Annotated:
+        return tuple(get_args(tp)[1:])
+    return ()
 
 
 class Adapter:
@@ -110,7 +122,8 @@ class DataclassAdapter(Adapter):
         specs: list[FieldSpec] = []
         for f in dataclasses.fields(model):
             required = f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
-            specs.append(FieldSpec(f.name, hints.get(f.name, f.type), required))
+            tp = hints.get(f.name, f.type)
+            specs.append(FieldSpec(f.name, tp, required, _annotated_meta(tp)))
         return specs
 
     def to_dict(self, instance: Any) -> dict[str, Any]:
@@ -138,7 +151,9 @@ class PydanticAdapter(Adapter):
         assert issubclass(model, pydantic.BaseModel)
         specs: list[FieldSpec] = []
         for name, info in model.model_fields.items():
-            specs.append(FieldSpec(name, info.annotation, info.is_required()))
+            specs.append(
+                FieldSpec(name, info.annotation, info.is_required(), tuple(info.metadata))
+            )
         return specs
 
     def to_dict(self, instance: Any) -> dict[str, Any]:
@@ -169,7 +184,7 @@ class MsgspecAdapter(Adapter):
         specs: list[FieldSpec] = []
         for f in msgspec.structs.fields(model):
             required = f.default is msgspec.NODEFAULT and f.default_factory is msgspec.NODEFAULT
-            specs.append(FieldSpec(f.name, f.type, required))
+            specs.append(FieldSpec(f.name, f.type, required, _annotated_meta(f.type)))
         return specs
 
     def to_dict(self, instance: Any) -> dict[str, Any]:

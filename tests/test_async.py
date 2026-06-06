@@ -7,10 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from ministore import AsyncStore
+from dataclasses import dataclass
+
+from ministore import AsyncStore, Index, Key, Unique
 from tests.models import DUser, Role
 
 pytest.importorskip("aiosqlite")
+
+
+@dataclass
+class AAccount:
+    id: Key[int]
+    email: Unique[str]
+    age: Index[int]
 
 
 def make_user(uid: int, name: str, age: int) -> DUser:
@@ -44,6 +53,16 @@ async def test_async_put_many_and_query(tmp_path: Path) -> None:
 
         assert await users.where(age__lt=30).delete() == 2
         assert await users.count() == 2
+
+
+async def test_async_markers(tmp_path: Path) -> None:
+    async with AsyncStore(tmp_path / "am.db") as db:
+        accounts = await db.collection(AAccount)  # key/indexes from markers
+        assert accounts.table.key == "id"
+        assert accounts.table.unique == ("email",)
+        assert accounts.table.indexes == ("age",)
+        await accounts.put(AAccount(id=1, email="a@b.c", age=30))
+        assert await accounts.get(1) == AAccount(id=1, email="a@b.c", age=30)
 
 
 async def test_async_persistence(tmp_path: Path) -> None:
