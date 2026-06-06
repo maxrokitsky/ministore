@@ -15,10 +15,11 @@ from . import _sql
 from ._adapters import get_adapter
 from ._base import Mapper
 from ._clause import compile_filters, compile_tail
-from ._schema import Table, build_table
+from ._schema import Table, build_projection, build_table
 from .exceptions import MissingDependencyError
 
 T = TypeVar("T")
+P = TypeVar("P")
 
 
 def _require_aiosqlite() -> Any:
@@ -135,6 +136,9 @@ class AsyncCollection(Generic[T]):
     def where(self, **filters: Any) -> AsyncQuery[T]:
         return AsyncQuery(self._store, self.table, self._mapper, dict(filters))
 
+    def as_model(self, model: type[P]) -> AsyncQuery[P]:
+        return self.where().as_model(model)
+
     async def all(self) -> list[T]:
         return await AsyncQuery(self._store, self.table, self._mapper, {}).all()
 
@@ -164,6 +168,7 @@ class AsyncQuery(Generic[T]):
         self._table = table
         self._mapper = mapper
         self._filters = filters
+        self._select_table: Table = table
         self._order: list[str] = []
         self._limit: int | None = None
         self._offset: int | None = None
@@ -171,6 +176,25 @@ class AsyncQuery(Generic[T]):
     def where(self, **filters: Any) -> AsyncQuery[T]:
         merged = {**self._filters, **filters}
         clone = AsyncQuery(self._store, self._table, self._mapper, merged)
+        clone._select_table = self._select_table
+        clone._order = list(self._order)
+        clone._limit = self._limit
+        clone._offset = self._offset
+        return clone
+
+    def as_model(self, model: type[P]) -> AsyncQuery[P]:
+        """Returns a read-only projection of this query shaped like ``model``.
+
+        ``model`` declares a subset of the collection's fields; ``.all()`` then
+        yields ``model`` instances built from just those columns. Filters and
+        ordering still run against the full table — you can filter or sort by a
+        field the projection omits.
+        """
+        adapter = get_adapter(model)
+        view_table = build_projection(self._table, model, adapter)
+        view_mapper: Mapper[P] = Mapper(model, view_table, adapter)
+        clone: AsyncQuery[P] = AsyncQuery(self._store, self._table, view_mapper, dict(self._filters))
+        clone._select_table = view_table
         clone._order = list(self._order)
         clone._limit = self._limit
         clone._offset = self._offset
@@ -192,7 +216,7 @@ class AsyncQuery(Generic[T]):
         where, params = compile_filters(self._table, self._filters)
         tail = compile_tail(self._table, self._order, self._limit, self._offset)
         conn = await self._store.connection()
-        async with conn.execute(_sql.select_sql(self._table, where, tail), params) as cur:
+        async with conn.execute(_sql.select_sql(self._select_table, where, tail), params) as cur:
             rows = await cur.fetchall()
         return [self._mapper.from_row(row) for row in rows]
 

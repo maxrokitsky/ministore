@@ -87,6 +87,36 @@ users.clear()               # empty the collection -> int
 users.drop()                # drop the table
 ```
 
+## Projections
+
+To fetch **fewer fields** in a typed way, declare a smaller "view" model and pass
+it to `as_model(...)`. The query then selects only those columns and returns
+instances of the view model — `list[View]`, so the type checker knows the exact
+shape:
+
+```python
+@dataclass
+class UserBrief:        # a subset of User's fields
+    id: int
+    name: str
+
+briefs = users.where(age__gte=18).as_model(UserBrief).all()   # -> list[UserBrief]
+brief  = users.as_model(UserBrief).first()                     # -> UserBrief | None
+```
+
+It is **read-only** and only changes the returned shape: `where(...)`,
+`order_by(...)`, `count()` and `delete()` still run against the full table, so
+you can filter or sort by a field the view omits:
+
+```python
+# filter/sort by `age` even though the view drops it
+users.where(age__gte=18).order_by("-age").as_model(UserBrief).all()
+```
+
+The view model can be any supported kind (`dataclass` / `pydantic` / `msgspec`)
+— it need not match the collection's kind. Its field names must be a subset of
+the collection's; an unknown field raises `QueryError`.
+
 ## Indexes
 
 Declare the key and indexes either as keyword arguments to `collection(...)`:

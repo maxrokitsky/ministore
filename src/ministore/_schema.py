@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ._adapters import Adapter, FieldSpec
 from ._markers import marker_kind
 from ._typemap import Column, resolve_column
-from .exceptions import MinistoreError
+from .exceptions import MinistoreError, QueryError
 
 
 @dataclass(frozen=True)
@@ -112,3 +112,32 @@ def _merge_indexed(explicit: tuple[str, ...], specs: list[FieldSpec], kind: str)
             seen.add(field)
             out.append(field)
     return tuple(out)
+
+
+def build_projection(base: Table, model: type, adapter: Adapter) -> Table:
+    """Builds a read-only projection of ``base`` shaped like ``model``.
+
+    The projection's columns are a subset of ``base``'s, in the order declared
+    by the view model, with the base columns (and their codecs) reused verbatim:
+    values were written with the base column's codec, so they read back to the
+    original Python type. The view model's field types are only for the type
+    checker and reconstruction — they do not affect decoding.
+
+    The table ``name`` (the ``FROM`` clause) stays the base table's, so a
+    projected query selects fewer columns from the same table. Raises
+    ``QueryError`` if a view field is not a column of the base table.
+    """
+    specs = adapter.fields(model)
+    if not specs:
+        raise QueryError(f"Projection model {model.__name__} has no fields")
+    base_map = base.column_map
+    cols: list[Column] = []
+    for spec in specs:
+        if spec.name not in base_map:
+            raise QueryError(
+                f"Field {spec.name!r} of projection {model.__name__} is not a "
+                f"column of table {base.name!r}: {sorted(base_map)}"
+            )
+        cols.append(base_map[spec.name])  # reuse the base column as-is
+    key = base.key if base.key in {col.name for col in cols} else cols[0].name
+    return Table(name=base.name, columns=tuple(cols), key=key, indexes=(), unique=())

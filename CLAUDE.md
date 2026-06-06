@@ -88,6 +88,18 @@ across the two layers.
 - **Adding a query operator** = add a branch in `_clause.compile_filters`
   (keyed on the `__op` suffix). Values are always parameter-bound; identifiers
   are validated against `Table.column_map` and quoted via `_sql.quote`.
+- **Projections (`Query.as_model(View)`) are read-only and schema-free.**
+  `_schema.build_projection(base, View, adapter)` builds a `Table` whose columns
+  are a subset of the base table's (reused verbatim, so codecs/round-trips are
+  identical) but whose `name` is still the base table's. The `Query` then keeps
+  two tables: `_table` (base — used for WHERE/ORDER/count/delete and as `FROM`)
+  and `_select_table` (what `SELECT` lists + what `Mapper` reconstructs; defaults
+  to `_table`, becomes the projection after `as_model`). This is why you can
+  filter/sort by a field the view omits. It never creates or checks tables —
+  fully decoupled from the schema path. Computed (SQL-expression) fields are a
+  planned extension: the "field not in base" branch in `build_projection` is
+  where a `Computed(...)` marker would slot in (adding `Column.expression`,
+  emitting `expr AS name` in `_sql.select_sql`).
 - **Thread/concurrency model.** Sync `Store` is shareable across threads: WAL +
   `busy_timeout`, one lazily-created `sqlite3` connection per thread
   (`threading.local`). Async `AsyncStore` holds a single `aiosqlite` connection

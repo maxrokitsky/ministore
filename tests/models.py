@@ -56,3 +56,32 @@ def make_msgspec() -> type[Any]:
         nickname: str | None = None
 
     return MUser
+
+
+# --- projection (view) models: a subset of the fields above ----------------
+
+
+@dataclass
+class DUserBrief:
+    id: int
+    name: str
+
+
+def make_pydantic_brief() -> type[Any]:
+    import pydantic
+
+    class PUserBrief(pydantic.BaseModel):
+        id: int
+        name: str
+
+    return PUserBrief
+
+
+def make_msgspec_brief() -> type[Any]:
+    import msgspec
+
+    class MUserBrief(msgspec.Struct):
+        id: int
+        name: str
+
+    return MUserBrief
