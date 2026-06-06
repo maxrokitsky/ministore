@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -74,3 +75,72 @@ async def test_async_persistence(tmp_path: Path) -> None:
         users = await db.collection(DUser, key="id")
         got = await users.get(7)
         assert got is not None and got.name == "x"
+
+
+async def test_async_transaction_commit(tmp_path: Path) -> None:
+    async with AsyncStore(tmp_path / "t.db") as db:
+        users = await db.collection(DUser, key="id")
+        async with db.transaction():
+            await users.put(make_user(1, "a", 1))
+            await users.put(make_user(2, "b", 2))
+        assert await users.count() == 2
+        assert db.in_transaction is False
+
+
+async def test_async_transaction_rollback(tmp_path: Path) -> None:
+    async with AsyncStore(tmp_path / "t.db") as db:
+        users = await db.collection(DUser, key="id")
+        await users.put(make_user(1, "a", 1))
+        with pytest.raises(RuntimeError):
+            async with db.transaction():
+                await users.put(make_user(2, "b", 2))
+                raise RuntimeError("boom")
+        assert {u.id for u in await users.all()} == {1}
+        assert db.in_transaction is False
+
+
+async def test_async_explicit_primitives(tmp_path: Path) -> None:
+    async with AsyncStore(tmp_path / "t.db") as db:
+        users = await db.collection(DUser, key="id")
+        await db.begin()
+        await users.put(make_user(1, "a", 1))
+        await db.rollback()
+        assert await users.get(1) is None
+        with pytest.raises(RuntimeError):
+            await db.commit()  # nothing open
+
+
+async def test_async_nested_savepoint(tmp_path: Path) -> None:
+    async with AsyncStore(tmp_path / "t.db") as db:
+        users = await db.collection(DUser, key="id")
+        async with db.transaction():
+            await users.put(make_user(1, "a", 1))
+            with pytest.raises(RuntimeError):
+                async with db.transaction():
+                    await users.put(make_user(2, "b", 2))
+                    raise RuntimeError("inner")
+            await users.put(make_user(3, "c", 3))
+        assert {u.id for u in await users.all()} == {1, 3}
+
+
+async def test_async_transaction_serializes_other_tasks(tmp_path: Path) -> None:
+    async with AsyncStore(tmp_path / "t.db") as db:
+        users = await db.collection(DUser, key="id")
+        order: list[str] = []
+        tx_open = asyncio.Event()
+
+        async def in_tx() -> None:
+            async with db.transaction():
+                await users.put(make_user(1, "a", 1))
+                tx_open.set()
+                await asyncio.sleep(0.05)  # hold the transaction open
+                order.append("tx-end")
+
+        async def autonomous() -> None:
+            await tx_open.wait()
+            await users.put(make_user(2, "b", 2))  # must wait for the tx to release
+            order.append("auto")
+
+        await asyncio.gather(in_tx(), autonomous())
+        assert order == ["tx-end", "auto"]  # the autonomous write did not interleave
+        assert await users.count() == 2

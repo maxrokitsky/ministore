@@ -18,6 +18,28 @@ def quote(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
 
+BEGIN_SQL = "BEGIN"
+COMMIT_SQL = "COMMIT"
+ROLLBACK_SQL = "ROLLBACK"
+
+
+def savepoint_name(depth: int) -> str:
+    """Name of the savepoint opened at the given (zero-based) nesting depth."""
+    return f"ministore_sp_{depth}"
+
+
+def savepoint_sql(name: str) -> str:
+    return f"SAVEPOINT {quote(name)}"
+
+
+def release_sql(name: str) -> str:
+    return f"RELEASE {quote(name)}"
+
+
+def rollback_to_sql(name: str) -> str:
+    return f"ROLLBACK TO {quote(name)}"
+
+
 def create_table_sql(table: Table) -> str:
     cols: list[str] = []
     for col in table.columns:

@@ -87,6 +87,53 @@ users.clear()               # empty the collection -> int
 users.drop()                # drop the table
 ```
 
+## Transactions
+
+By default every write commits on its own. To group several writes — across any
+collections of the same store — into one atomic unit, use the `transaction()`
+context manager: it commits once on exit and rolls back on any exception.
+
+```python
+with db.transaction():
+    users.put(user)
+    orders.put_many(items)
+    accounts.where(id=7).delete()
+# committed here; if the block raises, nothing above is written
+```
+
+The same primitives are also available explicitly, for full manual control —
+`transaction()` is just a thin wrapper over them:
+
+```python
+db.begin()
+try:
+    users.put(user)
+    db.commit()
+except Exception:
+    db.rollback()
+    raise
+
+db.in_transaction      # bool — are we inside an open transaction?
+```
+
+Transactions **nest** via SAVEPOINTs: an inner block can roll back on its own
+while the outer one keeps going (and an outer rollback still discards everything,
+inner commits included).
+
+The synchronous `Store` tracks transaction state per thread (each thread has its
+own connection). The asynchronous `AsyncStore` shares a single connection, so a
+transaction takes exclusive use of it for its duration — other tasks' operations
+wait until it finishes rather than interleaving into it. Everything mirrors the
+sync API as coroutines:
+
+```python
+async with db.transaction():
+    await users.put(user)
+    await orders.put_many(items)
+
+await db.begin(); ...; await db.commit()     # or the explicit primitives
+```
+
 ## Projections
 
 To fetch **fewer fields** in a typed way, declare a smaller "view" model and pass

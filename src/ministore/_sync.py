@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from os import PathLike
 from types import TracebackType
 from typing import Any, Generic, Self, TypeVar
@@ -22,6 +22,26 @@ from ._schema import Table, build_projection, build_table
 
 T = TypeVar("T")
 P = TypeVar("P")
+R = TypeVar("R")
+
+
+def _run_atomic(store: Store, work: Callable[[], R]) -> R:
+    """Run a multi-statement ``work`` atomically.
+
+    Inside an open transaction it just runs (joining it); otherwise it wraps
+    ``work`` in its own transaction so it stays atomic as a unit. Uses only the
+    public ``begin``/``commit``/``rollback`` primitives.
+    """
+    if store.in_transaction:
+        return work()
+    store.begin()
+    try:
+        result = work()
+    except BaseException:
+        store.rollback()
+        raise
+    store.commit()
+    return result
 
 
 class Store:
@@ -48,7 +68,12 @@ class Store:
         return conn
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=self._timeout, check_same_thread=False)
+        # isolation_level=None: manual transaction control. A lone statement is
+        # committed immediately (autocommit); BEGIN/COMMIT/SAVEPOINT are issued
+        # explicitly by the transaction primitives below.
+        conn = sqlite3.connect(
+            self.path, timeout=self._timeout, check_same_thread=False, isolation_level=None
+        )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -79,11 +104,67 @@ class Store:
         rows = conn.execute(_sql.table_info_sql(table)).fetchall()
         _sql.check_schema(table, rows)
         if create and not rows:
-            conn.execute(_sql.create_table_sql(table))
-            for stmt in _sql.create_index_sql(table):
-                conn.execute(stmt)
-            conn.commit()
+
+            def create_schema() -> None:
+                conn.execute(_sql.create_table_sql(table))
+                for stmt in _sql.create_index_sql(table):
+                    conn.execute(stmt)
+
+            _run_atomic(self, create_schema)
         return Collection(self, model, table, Mapper(model, table, adapter))
+
+    # -- transactions -----------------------------------------------------
+
+    def _tx_depth(self) -> int:
+        depth: int = getattr(self._local, "tx_depth", 0)
+        return depth
+
+    @property
+    def in_transaction(self) -> bool:
+        """Whether the current thread is inside an open transaction."""
+        return self._tx_depth() > 0
+
+    def begin(self) -> None:
+        """Open a transaction (or a nested SAVEPOINT) on the current thread."""
+        conn = self.connection()
+        depth = self._tx_depth()
+        if depth == 0:
+            conn.execute(_sql.BEGIN_SQL)
+        else:
+            conn.execute(_sql.savepoint_sql(_sql.savepoint_name(depth)))
+        self._local.tx_depth = depth + 1
+
+    def commit(self) -> None:
+        """Commit the innermost open transaction (or release its SAVEPOINT)."""
+        depth = self._tx_depth()
+        if depth == 0:
+            raise RuntimeError("commit() called without an active transaction")
+        conn = self.connection()
+        depth -= 1
+        if depth == 0:
+            conn.execute(_sql.COMMIT_SQL)
+        else:
+            conn.execute(_sql.release_sql(_sql.savepoint_name(depth)))
+        self._local.tx_depth = depth
+
+    def rollback(self) -> None:
+        """Roll back the innermost open transaction (or its SAVEPOINT)."""
+        depth = self._tx_depth()
+        if depth == 0:
+            raise RuntimeError("rollback() called without an active transaction")
+        conn = self.connection()
+        depth -= 1
+        if depth == 0:
+            conn.execute(_sql.ROLLBACK_SQL)
+        else:
+            name = _sql.savepoint_name(depth)
+            conn.execute(_sql.rollback_to_sql(name))
+            conn.execute(_sql.release_sql(name))
+        self._local.tx_depth = depth
+
+    def transaction(self) -> _Transaction:
+        """Context manager that wraps :meth:`begin`/:meth:`commit`/:meth:`rollback`."""
+        return _Transaction(self)
 
     def close(self) -> None:
         self._closed = True
@@ -105,6 +186,28 @@ class Store:
         self.close()
 
 
+class _Transaction:
+    """Thin context manager over ``Store.begin``/``commit``/``rollback``."""
+
+    def __init__(self, store: Store) -> None:
+        self._store = store
+
+    def __enter__(self) -> Self:
+        self._store.begin()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if exc_type is None:
+            self._store.commit()
+        else:
+            self._store.rollback()
+
+
 class Collection(Generic[T]):
     """A typed collection of objects of a single model."""
 
@@ -117,14 +220,12 @@ class Collection(Generic[T]):
     def put(self, obj: T) -> T:
         conn = self._store.connection()
         conn.execute(_sql.insert_sql(self.table), self._mapper.to_values(obj))
-        conn.commit()
         return obj
 
     def put_many(self, objs: Iterable[T]) -> int:
         conn = self._store.connection()
         rows = [self._mapper.to_values(obj) for obj in objs]
-        with conn:
-            conn.executemany(_sql.insert_sql(self.table), rows)
+        _run_atomic(self._store, lambda: conn.executemany(_sql.insert_sql(self.table), rows))
         return len(rows)
 
     def get(self, key: Any) -> T | None:
@@ -135,7 +236,6 @@ class Collection(Generic[T]):
     def delete(self, key: Any) -> bool:
         conn = self._store.connection()
         cur = conn.execute(_sql.delete_one_sql(self.table), (self._mapper.encode_key(key),))
-        conn.commit()
         return cur.rowcount > 0
 
     def where(self, **filters: Any) -> Query[T]:
@@ -156,7 +256,6 @@ class Collection(Generic[T]):
     def drop(self) -> None:
         conn = self._store.connection()
         conn.execute(f"DROP TABLE IF EXISTS {_sql.quote(self.table.name)}")
-        conn.commit()
 
     def __iter__(self) -> Iterator[T]:
         return iter(self.all())
@@ -247,7 +346,6 @@ class Query(Generic[T]):
         where, params = compile_filters(self._table, self._filters)
         conn = self._store.connection()
         cur = conn.execute(_sql.delete_where_sql(self._table, where), params)
-        conn.commit()
         return cur.rowcount
 
     def __iter__(self) -> Iterator[T]:
