@@ -23,7 +23,14 @@ def store(tmp_path: Path) -> Store:
 
 def test_put_get_roundtrip(store: Store) -> None:
     users = store.collection(DUser, key="id")
-    u = DUser(id=1, name="Anna", age=30, role=Role.admin, created=datetime(2021, 5, 1, 9, 30), tags=["x", "y"])
+    u = DUser(
+        id=1,
+        name="Anna",
+        age=30,
+        role=Role.admin,
+        created=datetime(2021, 5, 1, 9, 30),
+        tags=["x", "y"],
+    )
     users.put(u)
     got = users.get(1)
     assert got == u
@@ -75,7 +82,9 @@ def test_where_filters(store: Store) -> None:
 
 def test_isnull_filter(store: Store) -> None:
     users = store.collection(DUser, key="id")
-    users.put(DUser(id=1, name="a", age=20, role=Role.user, created=datetime(2020, 1, 1), nickname="nick"))
+    users.put(
+        DUser(id=1, name="a", age=20, role=Role.user, created=datetime(2020, 1, 1), nickname="nick")
+    )
     users.put(make_user(2, "b", 21))  # nickname=None
     assert {u.id for u in users.where(nickname__isnull=True)} == {2}
     assert {u.id for u in users.where(nickname__isnull=False)} == {1}

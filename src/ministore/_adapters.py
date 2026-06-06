@@ -108,7 +108,9 @@ def _coerce(tp: Any, value: Any) -> Any:
 def _build_dataclass(model: type, data: dict[str, Any]) -> Any:
     hints = get_type_hints(model, include_extras=False)
     field_names = {f.name for f in dataclasses.fields(model)}
-    kwargs = {name: _coerce(hints.get(name), value) for name, value in data.items() if name in field_names}
+    kwargs = {
+        name: _coerce(hints.get(name), value) for name, value in data.items() if name in field_names
+    }
     return model(**kwargs)
 
 
@@ -151,9 +153,7 @@ class PydanticAdapter(Adapter):
         assert issubclass(model, pydantic.BaseModel)
         specs: list[FieldSpec] = []
         for name, info in model.model_fields.items():
-            specs.append(
-                FieldSpec(name, info.annotation, info.is_required(), tuple(info.metadata))
-            )
+            specs.append(FieldSpec(name, info.annotation, info.is_required(), tuple(info.metadata)))
         return specs
 
     def to_dict(self, instance: Any) -> dict[str, Any]:
@@ -208,6 +208,5 @@ def get_adapter(model: type) -> Adapter:
         if adapter_cls.matches(model):
             return adapter_cls()
     raise UnsupportedModelError(
-        f"Model {model!r} is not supported. Use a dataclass, "
-        f"pydantic.BaseModel or msgspec.Struct."
+        f"Model {model!r} is not supported. Use a dataclass, pydantic.BaseModel or msgspec.Struct."
     )

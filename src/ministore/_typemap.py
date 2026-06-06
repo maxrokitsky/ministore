@@ -139,7 +139,11 @@ def _base_codec(tp: Any) -> tuple[str, Encoder, Decoder]:
             (lambda v: _dt.time.fromisoformat(v) if isinstance(v, str) else v),
         )
     if tp is Decimal:
-        return "TEXT", (lambda v: str(v)), (lambda v: Decimal(v) if not isinstance(v, Decimal) else v)
+        return (
+            "TEXT",
+            (lambda v: str(v)),
+            (lambda v: Decimal(v) if not isinstance(v, Decimal) else v),
+        )
     if tp is _uuid.UUID:
         return (
             "TEXT",

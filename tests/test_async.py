@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 import pytest
-
-from dataclasses import dataclass
 
 from ministore import AsyncStore, Index, Key, Unique
 from tests.models import DUser, Role

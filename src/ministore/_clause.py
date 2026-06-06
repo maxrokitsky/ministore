@@ -21,9 +21,7 @@ def compile_filters(table: Table, filters: dict[str, Any]) -> tuple[str, list[An
         try:
             col = table.column(field)
         except KeyError:
-            raise QueryError(
-                f"Unknown field {field!r} in table {table.name!r}"
-            ) from None
+            raise QueryError(f"Unknown field {field!r} in table {table.name!r}") from None
 
         if op in ("exact", "eq"):
             clauses.append(f"{quote(col.name)} = ?")

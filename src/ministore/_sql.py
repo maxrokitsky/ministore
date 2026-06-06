@@ -63,7 +63,8 @@ def create_index_sql(table: Table) -> list[str]:
     for field in table.unique:
         idx = f"uniq_{table.name}_{field}"
         statements.append(
-            f"CREATE UNIQUE INDEX IF NOT EXISTS {quote(idx)} ON {quote(table.name)} ({quote(field)})"
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {quote(idx)} "
+            f"ON {quote(table.name)} ({quote(field)})"
         )
     return statements
 
@@ -71,7 +72,9 @@ def create_index_sql(table: Table) -> list[str]:
 def insert_sql(table: Table) -> str:
     names = [quote(col.name) for col in table.columns]
     placeholders = ", ".join("?" for _ in table.columns)
-    return f"INSERT OR REPLACE INTO {quote(table.name)} ({', '.join(names)}) VALUES ({placeholders})"
+    return (
+        f"INSERT OR REPLACE INTO {quote(table.name)} ({', '.join(names)}) VALUES ({placeholders})"
+    )
 
 
 def get_sql(table: Table) -> str:

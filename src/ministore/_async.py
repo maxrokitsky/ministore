@@ -258,7 +258,9 @@ class AsyncCollection(Generic[T]):
         conn = await self._store.connection()
 
         async def work() -> int:
-            cur = await conn.execute(_sql.delete_one_sql(self.table), (self._mapper.encode_key(key),))
+            cur = await conn.execute(
+                _sql.delete_one_sql(self.table), (self._mapper.encode_key(key),)
+            )
             return cur.rowcount
 
         return await _run_atomic(self._store, work) > 0
@@ -324,7 +326,9 @@ class AsyncQuery(Generic[T]):
         adapter = get_adapter(model)
         view_table = build_projection(self._table, model, adapter)
         view_mapper: Mapper[P] = Mapper(model, view_table, adapter)
-        clone: AsyncQuery[P] = AsyncQuery(self._store, self._table, view_mapper, dict(self._filters))
+        clone: AsyncQuery[P] = AsyncQuery(
+            self._store, self._table, view_mapper, dict(self._filters)
+        )
         clone._select_table = view_table
         clone._order = list(self._order)
         clone._limit = self._limit

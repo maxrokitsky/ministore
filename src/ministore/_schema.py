@@ -71,12 +71,7 @@ def build_table(
 
 def _marked_fields(specs: list[FieldSpec], kind: str) -> list[str]:
     """Field names carrying a marker of the given kind, in declaration order."""
-    return [
-        spec.name
-        for spec in specs
-        for meta in spec.metadata
-        if marker_kind(meta) == kind
-    ]
+    return [spec.name for spec in specs for meta in spec.metadata if marker_kind(meta) == kind]
 
 
 def _resolve_key(model: type, specs: list[FieldSpec], key: str | None) -> str:
